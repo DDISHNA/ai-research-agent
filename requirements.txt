@@ -1,0 +1,5 @@
+from agent import run_agent
+question = input("what do you want me to research?")
+result = run_agent(question)
+print("\n Final Answer:")
+print(result)
