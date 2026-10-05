@@ -1,6 +1,20 @@
+from ddgs import DDGS
 def search_web(query):
-    print(f"searching for: {query}")
-    return f"search bresults for:{query}"
+    print(f"\n Searching web for: {query}")
+    results = []
+    with DDGS() as ddgs:
+        search_results = ddgs.text(
+            query,
+            max_results=5
+        )
+        for result in search_results:
+            results.append({
+                'title':result.get("title"),
+                'url': result.get('href'),
+                'snippet': result.get('body')
+            })
+    return results
+
 def calculator(expression):
     try:
         result = eval(expression)

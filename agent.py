@@ -1,94 +1,183 @@
 import ollama
-import json 
-from tools import calculator
+import json
+from tools import calculator, search_web
 
 conversation = []
-def run_agent(user_question):
-    # 1. Add User's question to conversation memory
-    conversation.append({
-            "role":"user",
-            "content": user_question
-        })
-    # ask Gemma what it wants to do
-    prompt = f"""
-    You are an AI Agent.
-    Decide wheather the user's question requires a calculator.
-    if calculation is required, return only this JSON:
-        {{
-        "action": "calculator",
-        "expression": "mathematical expression"
-        }}
-    if calculation is not required, return only this JSON:
-        {{
-            "action":"answer",
-            "answer": "your answer"
-        }}
-    User question:
-    {user_question}    
-    """
-    response = ollama.chat(
-        model="gemma4:12b",
-        messages=[
-            {
-                "role":"system",
-                "content": prompt
-            },
-            *conversation
-        ]
-    )
-    
-    decision_text = response["message"]["content"]
-    print("\nGemma decision:")
-    print(decision_text)
 
-    # 3 Convert gemma's JSON response into python data
-    try:
+
+def run_agent(user_question):
+
+    # --------------------------------
+    # 1. Save user's question
+    # --------------------------------
+
+    conversation.append({
+        "role": "user",
+        "content": user_question
+    })
+
+    system_prompt = """
+You are an AI Agent.
+
+You have access to two tools.
+
+1. calculator
+   Use for mathematical calculations.
+
+2. web_search
+   Use when current or internet information is required.
+
+You MUST return ONLY valid JSON.
+
+For calculator:
+
+{
+    "action": "calculator",
+    "expression": "mathematical expression"
+}
+
+For web search:
+
+{
+    "action": "web_search",
+    "query": "search query"
+}
+
+If you have enough information to answer:
+
+{
+    "action": "answer",
+    "answer": "final answer"
+}
+"""
+
+    # --------------------------------
+    # 2. Internal messages
+    # --------------------------------
+
+    agent_messages = [
+        {
+            "role": "system",
+            "content": system_prompt
+        },
+        *conversation
+    ]
+
+    # --------------------------------
+    # 3. Agent loop
+    # --------------------------------
+
+    while True:
+
+        response = ollama.chat(
+            model="gemma4:12b",
+            messages=agent_messages
+        )
+
+        decision_text = response["message"]["content"]
+
+        print("\nGemma decision:")
+        print(decision_text)
+
+        # Remove Markdown code fences
         decision_text = decision_text.replace("```json", "")
         decision_text = decision_text.replace("```", "")
         decision_text = decision_text.strip()
 
-        decision = json.loads(decision_text)
-    except json.JSONDecodeError:
-        return "I couldn't understand the agent decision."
+        # --------------------------------
+        # 4. Convert JSON → Python dict
+        # --------------------------------
 
-    # 4. if gemma chooses a calculator
-    if decision["action"] == "calculator":
-        expression = decision["expression"]
+        try:
 
-        print("\nUsing calculator....")
-        print("Expression:", expression)
+            decision = json.loads(decision_text)
 
-        #  run the python calculator tool
-        result = calculator(expression)
-        print('calculator result:', result)
+        except json.JSONDecodeError:
 
-        # 5. give calculator result back to gemma
-        conversation.append({
-            "role":"assistant",
-            "content":decision_text
+            # Gemma sometimes gives a normal text answer
+            # instead of JSON after using a tool.
+
+            answer = decision_text
+
+            conversation.append({
+                "role": "assistant",
+                "content": answer
+            })
+
+            return answer
+
+        action = decision.get("action")
+
+        # --------------------------------
+        # 5. Final answer
+        # --------------------------------
+
+        if action == "answer":
+
+            answer = decision["answer"]
+
+            conversation.append({
+                "role": "assistant",
+                "content": answer
+            })
+
+            return answer
+
+        # --------------------------------
+        # 6. Calculator
+        # --------------------------------
+
+        elif action == "calculator":
+
+            expression = decision["expression"]
+
+            print("\nUsing calculator...")
+            print("Expression:", expression)
+
+            result = calculator(expression)
+
+            print("Calculator result:", result)
+
+        # --------------------------------
+        # 7. Web search
+        # --------------------------------
+
+        elif action == "web_search":
+
+            query = decision["query"]
+
+            print("\nUsing web search...")
+            print("Query:", query)
+
+            result = search_web(query)
+
+            print("\nSearch results:")
+            print(result)
+
+        else:
+
+            return "Unknown Action"
+
+        # --------------------------------
+        # 8. Give tool result to Gemma
+        # --------------------------------
+
+        agent_messages.append({
+            "role": "assistant",
+            "content": decision_text
         })
-        conversation.append({
-            "role":"user",
+
+        agent_messages.append({
+            "role": "user",
             "content": f"""
-the calculator tool returned this result:
+The tool returned this result:
+
 {result}
-give the final answer to the user in a simple way
+
+Use this result to continue solving the original question.
+
+If you need another tool, choose one.
+
+If you have enough information, provide the final answer.
 """
         })
-        final_response = ollama.chat(
-            model="gemma4:12b",
-            messages=conversation
-        )
-        answer = final_response["message"]["content"]
-
-        # 6. if no tool is needed
-    elif decision["action"] == "answer":
-        answer = decision["answer"]
-    else:
-        answer = "Unknown Action"
-    #  7. save gemma's final answer in memeory
-    conversation.append({
-        "role":"assistant",
-        "content": answer
-    })
-    return answer
