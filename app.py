@@ -10,8 +10,7 @@ st.title("AI Research Agent 🤖")
 st.write("Ask me Anything")
 
 # Initialize conversation for this browser session
-if "conversation" not in st.session_state:
-    st.session_state.conversation = conversation
+st.session_state.conversation = conversation
 
 #  display previous questions
 for message in st.session_state.conversation:
@@ -25,9 +24,22 @@ for message in st.session_state.conversation:
 # chat input
 question = st.chat_input("Type your Questions here.....")
 
-if question:
-    # run th existing agent
-    answer = run_agent(question)
 
+
+if question:
+    # show user's question immediately
+    with st.chat_message("user"):
+        st.write(question)
+
+    # show tool activity
+    def show_tool(message):
+        st.info(message)
+
+    # run th existing agent
+    answer = run_agent(question, tool_callback=show_tool)
+
+    # show final answer
+    with st.chat_message("assistant"):
+        st.write(question)
     # refresh the page
     st.rerun()

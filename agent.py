@@ -5,7 +5,7 @@ from tools import calculator, search_web
 conversation = []
 
 
-def run_agent(user_question):
+def run_agent(user_question, tool_callback=None):
 
     # --------------------------------
     # 1. Save user's question
@@ -134,6 +134,9 @@ If you have enough information to answer:
             print("\nUsing calculator...")
             print("Expression:", expression)
 
+            if tool_callback:
+                tool_callback(f"🔢 using calculator: `{expression}`")
+
             result = calculator(expression)
 
             print("Calculator result:", result)
@@ -148,6 +151,9 @@ If you have enough information to answer:
 
             print("\nUsing web search...")
             print("Query:", query)
+
+            if tool_callback:
+                tool_callback(f"🔎 Searching the web: `{query}`")
 
             result = search_web(query)
 
