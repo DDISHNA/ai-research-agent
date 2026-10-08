@@ -1,11 +1,12 @@
 import ollama
 import json
+
 from tools import calculator, search_web
 
 conversation = []
 
 
-def run_agent(user_question, tool_callback=None):
+def run_agent(user_question, tool_callback=None, pdf_text=None):
 
     # --------------------------------
     # 1. Save user's question
@@ -15,6 +16,10 @@ def run_agent(user_question, tool_callback=None):
         "role": "user",
         "content": user_question
     })
+
+    # --------------------------------
+    # 2. System prompt
+    # --------------------------------
 
     system_prompt = """
 You are an AI Agent.
@@ -52,7 +57,28 @@ If you have enough information to answer:
 """
 
     # --------------------------------
-    # 2. Internal messages
+    # 3. Add PDF context if available
+    # --------------------------------
+
+    if pdf_text:
+
+        system_prompt += f"""
+
+An uploaded PDF is available.
+
+Use the following PDF content to answer questions about the document:
+
+--- PDF CONTENT START ---
+
+{pdf_text}
+
+--- PDF CONTENT END ---
+
+Prefer the PDF content when the user's question is about the uploaded document.
+"""
+
+    # --------------------------------
+    # 4. Internal messages
     # --------------------------------
 
     agent_messages = [
@@ -64,7 +90,7 @@ If you have enough information to answer:
     ]
 
     # --------------------------------
-    # 3. Agent loop
+    # 5. Agent loop
     # --------------------------------
 
     while True:
@@ -85,7 +111,7 @@ If you have enough information to answer:
         decision_text = decision_text.strip()
 
         # --------------------------------
-        # 4. Convert JSON → Python dict
+        # 6. Convert JSON → Python dict
         # --------------------------------
 
         try:
@@ -94,7 +120,7 @@ If you have enough information to answer:
 
         except json.JSONDecodeError:
 
-            # Gemma sometimes gives a normal text answer
+            # Gemma sometimes gives normal text
             # instead of JSON after using a tool.
 
             answer = decision_text
@@ -109,7 +135,7 @@ If you have enough information to answer:
         action = decision.get("action")
 
         # --------------------------------
-        # 5. Final answer
+        # 7. Final answer
         # --------------------------------
 
         if action == "answer":
@@ -124,7 +150,7 @@ If you have enough information to answer:
             return answer
 
         # --------------------------------
-        # 6. Calculator
+        # 8. Calculator
         # --------------------------------
 
         elif action == "calculator":
@@ -135,14 +161,16 @@ If you have enough information to answer:
             print("Expression:", expression)
 
             if tool_callback:
-                tool_callback(f"🔢 using calculator: `{expression}`")
+                tool_callback(
+                    f"🔢 Using calculator: `{expression}`"
+                )
 
             result = calculator(expression)
 
             print("Calculator result:", result)
 
         # --------------------------------
-        # 7. Web search
+        # 9. Web search
         # --------------------------------
 
         elif action == "web_search":
@@ -153,7 +181,9 @@ If you have enough information to answer:
             print("Query:", query)
 
             if tool_callback:
-                tool_callback(f"🔎 Searching the web: `{query}`")
+                tool_callback(
+                    f"🔎 Searching the web: `{query}`"
+                )
 
             result = search_web(query)
 
@@ -165,7 +195,7 @@ If you have enough information to answer:
             return "Unknown Action"
 
         # --------------------------------
-        # 8. Give tool result to Gemma
+        # 10. Give tool result to Gemma
         # --------------------------------
 
         agent_messages.append({
