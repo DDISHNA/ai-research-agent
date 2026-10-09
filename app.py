@@ -1,3 +1,4 @@
+
 import streamlit as st
 
 from agent import run_agent, conversation
@@ -10,119 +11,148 @@ st.set_page_config(
 )
 
 st.title("AI Research Agent 🤖")
-st.write("Ask me Anything")
+st.write("Ask me anything")
 
 
 # --------------------------------
-# PDF Upload
+# 1. Initialize conversation
 # --------------------------------
 
-uploaded_file = st.file_uploader(
-    "Upload a PDF",
-    type=["pdf"]
-)
-
-
-pdf_text = None
-
-
-if uploaded_file:
-
-    # Save uploaded PDF temporarily
-    with open("uploaded.pdf", "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
-    # Read PDF
-    pdf_text = read_pdf("uploaded.pdf")
-
-    if pdf_text.startswith("PDF reading error"):
-
-        st.error(pdf_text)
-
-    else:
-
-        st.success("📄 PDF uploaded successfully!")
-
-        st.caption(
-            f"Extracted {len(pdf_text)} characters from the PDF."
-        )
+if "conversation" not in st.session_state:
+    st.session_state.conversation = conversation
 
 
 # --------------------------------
-# Conversation
+# 2. Display previous messages
 # --------------------------------
-
-st.session_state.conversation = conversation
-
-
-# Display previous conversation
 
 for message in st.session_state.conversation:
 
-    if message["role"] == "user":
-
-        with st.chat_message("user"):
-            st.write(message["content"])
-
-    elif message["role"] == "assistant":
-
-        with st.chat_message("assistant"):
-            st.write(message["content"])
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
 
 
 # --------------------------------
-# Chat input
+# 3. Chat input with file attachment
 # --------------------------------
 
-question = st.chat_input(
-    "Type your Questions here....."
+prompt = st.chat_input(
+    "Type your question here...",
+    accept_file="multiple",
+    file_type=["pdf"]
 )
 
 
-if question:
+# --------------------------------
+# 4. Process question and attachments
+# --------------------------------
+
+if prompt:
+
+    question = prompt.text or ""
+    uploaded_files = prompt.files
+
+    pdf_text = None
 
     # --------------------------------
-    # Show user's question immediately
+    # Read attached PDFs
+    # --------------------------------
+
+    if uploaded_files:
+
+        extracted_documents = []
+
+        for uploaded_file in uploaded_files:
+
+            with st.spinner(
+                f"Reading {uploaded_file.name}..."
+            ):
+
+                # Save PDF temporarily
+                with open("uploaded.pdf", "wb") as f:
+                    f.write(uploaded_file.getvalue())
+
+                # Extract text using pypdf or OCR
+                text = read_pdf("uploaded.pdf")
+
+                if text.startswith("PDF reading error:"):
+                    st.error(
+                        f"Could not read {uploaded_file.name}: {text}"
+                    )
+                    continue
+
+                if not text.strip():
+                    st.warning(
+                        f"No text could be extracted from "
+                        f"{uploaded_file.name}."
+                    )
+                    continue
+
+                extracted_documents.append(
+                    f"Document: {uploaded_file.name}\n{text}"
+                )
+
+        if extracted_documents:
+            pdf_text = "\n\n".join(extracted_documents)
+
+    # --------------------------------
+    # Validate input
+    # --------------------------------
+
+    if not question.strip() and not pdf_text:
+        st.warning(
+            "Please enter a question or attach a readable PDF."
+        )
+        st.stop()
+
+    if uploaded_files and not pdf_text:
+        st.error(
+            "I couldn't extract readable text from the attached PDF."
+        )
+        st.stop()
+
+    # --------------------------------
+    # Display user's message
     # --------------------------------
 
     with st.chat_message("user"):
-        st.write(question)
+
+        st.write(
+            question or "Please summarize the uploaded PDF."
+        )
+
+        for uploaded_file in uploaded_files:
+            st.caption(f"📎 {uploaded_file.name}")
 
     # --------------------------------
-    # Tool activity
+    # Tool activity callback
     # --------------------------------
 
     tool_status = st.empty()
 
     def show_tool(message):
-
         tool_status.info(message)
 
     # --------------------------------
-    # Run agent
-    # --------------------------------
-
-    answer = run_agent(
-        question,
-        tool_callback=show_tool,
-        pdf_text=pdf_text
-    )
-
-    # --------------------------------
-    # Clear tool status
-    # --------------------------------
-
-    tool_status.empty()
-
-    # --------------------------------
-    # Show final answer
+    # Run the agent
     # --------------------------------
 
     with st.chat_message("assistant"):
+
+        with st.spinner("Thinking..."):
+
+            answer = run_agent(
+                question or "Summarize the uploaded PDF.",
+                tool_callback=show_tool,
+                pdf_text=pdf_text
+            )
+
+        tool_status.empty()
+
         st.write(answer)
 
     # --------------------------------
-    # Refresh
+    # Refresh chat
     # --------------------------------
 
     st.rerun()
